@@ -9,7 +9,7 @@ app.set('views', path.join(__dirname, 'views')); // Look for views in ./src/view
 
 // Define the root route
 app.get('/', (req, res) => {
-    res.render('index', { message: "The Pipeline is Working!" });
+    res.render('index', { message: "This is the new feature!" });
 });
 
 // Export the app logic so it can be used by tests OR our server.js
