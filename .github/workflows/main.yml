@@ -13,7 +13,7 @@ jobs:
   # This job runs for STAGING deployments and PR checks
   build_test_and_deploy_staging:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop' or github.event_name == 'pull_request'
+    if: github.ref == 'refs/heads/develop' || github.event_name == 'pull_request'
     
     steps:
       - name: Checkout Code
