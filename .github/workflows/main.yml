@@ -1,13 +1,20 @@
-name: Clean Build and Deploy Pipeline
+name: Full CD Pipeline with DevSecOps
 
 on:
   push:
     branches:
       - main
       - develop
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  build_and_push:
+  # ==========================================================
+  #  1. BUILD, TEST, AND PUSH
+  # =is stage is now complete and will become the foundation.
+  # ==========================================================
+  build_test_and_push:
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.vars.outputs.sha_short }}
@@ -15,6 +22,8 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
+
+      # We will add tests back here in the next phase
 
       - name: Set output variables
         id: vars
@@ -34,13 +43,58 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
 
-  deploy_production:
-    needs: build_and_push
+  # ==========================================================
+  #  2. DEPLOY TO STAGING
+  # This job will now run automatically on every push to 'develop'.
+  # ==========================================================
+  deploy_staging:
+    needs: build_test_and_push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    # This 'if' condition is crucial for running only on the 'develop' branch
+    if: github.ref == 'refs/heads/develop'
+    environment: staging # Associates the deployment with the 'staging' environment
 
     steps:
-      - name: Deploy to Production
-        run: echo "Deploying image ${{ needs.build_and_push.outputs.image_tag }} to production..."
-        # The real SSH deployment step will go here later.
-        # We use an echo command first to guarantee a successful run.
+      - name: Deploy to Staging Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USERNAME }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
+            docker stop staging-app || true
+            docker rm staging-app || true
+            docker run -d --restart always \
+              -p 80:3000 \
+              --name staging-app \
+              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
+
+  # ==========================================================
+  #  3. DEPLOY TO PRODUCTION
+  # This uses a real SSH deployment and a manual approval step.
+  # ==========================================================
+  deploy_production:
+    needs: build_test_and_push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    # This configures the manual approval gate in GitHub
+    environment:
+      name: production
+      url: ${{ secrets.PRODUCTION_URL }}
+
+    steps:
+      - name: Deploy to Production Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
+            docker stop prod-app || true
+            docker rm prod-app || true
+            docker run -d --restart always \
+              -p 80:3000 \
+              --name prod-app \
+              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
