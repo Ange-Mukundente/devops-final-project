@@ -1,84 +1,13 @@
-name: Full CD Pipeline with DevSecOps
+name: Simple Build Pipeline
 
 on:
   push:
     branches:
-      - main
       - develop
-  pull_request:
-    branches:
-      - main
 
 jobs:
-  build_test_and_push:
+  build:
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.vars.outputs.sha_short }}
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-      
-      - name: Set output variables
-        id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-
-      - name: Build and Push Docker Image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
-
-  deploy_staging:
-    needs: build_test_and_push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
-    environment: staging
-
-    steps:
-      - name: Deploy to Staging Server
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.STAGING_HOST }}
-          username: ${{ secrets.STAGING_USERNAME }}
-          key: ${{ secrets.STAGING_SSH_KEY }}
-          script: |
-            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
-            docker stop staging-app || true
-            docker rm staging-app || true
-            docker run -d --restart always \
-              -p 80:3000 \
-              --name staging-app \
-              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
-
-  deploy_production:
-    needs: build_test_and_push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment:
-      name: production
-      url: "${{ secrets.PRODUCTION_URL }}"
-
-    steps:
-      - name: Deploy to Production Server
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.PRODUCTION_HOST }}
-          username: ${{ secrets.PRODUCTION_USERNAME }}
-          key: ${{ secrets.PRODUCTION_SSH_KEY }}
-          script: |
-            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
-            docker stop prod-app || true
-            docker rm prod-app || true
-            docker run -d --restart always \
-              -p 80:3000 \
-              --name prod-app \
-              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
+      - name: A simple step to prove the pipeline runs
+        run: echo "The pipeline has successfully started and this step works!"
