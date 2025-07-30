@@ -39,7 +39,7 @@ jobs:
     # This job will only run after the 'build_and_push' job is successful
     needs: build_and_push
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Deploy to Staging Server
         uses: appleboy/ssh-action@master
