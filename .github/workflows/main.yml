@@ -2,18 +2,25 @@ name: Full CD Pipeline with Testing & Security
 
 on:
   push:
+    # Trigger on push to BOTH develop and main
     branches:
+      - main
       - develop
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  build-test-deploy:
+  # This is your combined build, test, and staging deployment job
+  build_test_and_deploy_staging:
     runs-on: ubuntu-latest
+    # This 'if' condition is CRITICAL. It ensures this job ONLY runs for the 'develop' branch.
+    if: github.ref == 'refs/heads/develop'
     
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # --- NEW STEPS ADDED HERE ---
       - name: Install Node.js Dependencies
         run: npm ci
 
@@ -26,7 +33,6 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           command: 'monitor'
-      # --- END OF NEW STEPS ---
 
       - name: Set output variables
         id: vars
@@ -59,4 +65,51 @@ jobs:
             docker run -d --restart always \
               -p 80:3000 \
               --name staging-app \
+              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
+
+  # ---- THIS IS THE NEW JOB FOR PRODUCTION ----
+  build_and_deploy_production:
+    runs-on: ubuntu-latest
+    # This 'if' condition ensures this job ONLY runs for the 'main' branch
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: ${{ secrets.PRODUCTION_URL }}
+    
+    steps:
+      # We repeat the build steps to ensure the production build is clean and isolated
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        
+      - name: Set output variables
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
+
+      - name: Deploy to Production Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: ${{ secrets.PRODUCTION_USERNAME }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
+            docker stop prod-app || true
+            docker rm prod-app || true
+            docker run -d --restart always \
+              -p 80:3000 \
+              --name prod-app \
               ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
