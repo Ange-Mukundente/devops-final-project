@@ -2,7 +2,6 @@ name: Full CD Pipeline with Testing & Security
 
 on:
   push:
-    # Trigger on push to BOTH develop and main
     branches:
       - main
       - develop
@@ -11,10 +10,9 @@ on:
       - main
 
 jobs:
-  # This is your combined build, test, and staging deployment job
+  # This job runs for STAGING deployments
   build_test_and_deploy_staging:
     runs-on: ubuntu-latest
-    # This 'if' condition is CRITICAL. It ensures this job ONLY runs for the 'develop' branch.
     if: github.ref == 'refs/heads/develop'
     
     steps:
@@ -67,17 +65,15 @@ jobs:
               --name staging-app \
               ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
 
-  # ---- THIS IS THE NEW JOB FOR PRODUCTION ----
+  # This job runs for PRODUCTION deployments
   build_and_deploy_production:
     runs-on: ubuntu-latest
-    # This 'if' condition ensures this job ONLY runs for the 'main' branch
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: ${{ secrets.PRODUCTION_URL }}
+      url: "${{ secrets.PRODUCTION_URL }}" # <-- THE TYPO IS GONE FROM THIS LINE
     
     steps:
-      # We repeat the build steps to ensure the production build is clean and isolated
       - name: Checkout Code
         uses: actions/checkout@v3
         
