@@ -6,7 +6,7 @@ on:
       - develop
 
 jobs:
-  # STEP 1: Add back the core build and push functionality
+  # Job 1: Build the code and push to Docker Hub
   build_and_push:
     runs-on: ubuntu-latest
     outputs:
@@ -33,3 +33,25 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
+
+  # Job 2: Deploy the container to the Staging server
+  deploy_staging:
+    # This job will only run after the 'build_and_push' job is successful
+    needs: build_and_push
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Deploy to Staging Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USERNAME }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_and_push.outputs.image_tag }}
+            docker stop staging-app || true
+            docker rm staging-app || true
+            docker run -d --restart always \
+              -p 80:3000 \
+              --name staging-app \
+              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_and_push.outputs.image_tag }}
