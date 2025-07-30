@@ -1,4 +1,4 @@
-name: Rebuilding the CD Pipeline
+name: Full CD Pipeline with Testing & Security
 
 on:
   push:
@@ -6,15 +6,27 @@ on:
       - develop
 
 jobs:
-  # Job 1: Build the code and push to Docker Hub
-  build_and_push:
+  build-test-deploy:
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.vars.outputs.sha_short }}
-
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
+
+      # --- NEW STEPS ADDED HERE ---
+      - name: Install Node.js Dependencies
+        run: npm ci
+
+      - name: Run Automated Unit Tests
+        run: npm test
+        
+      - name: Scan for Dependency Vulnerabilities with Snyk
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          command: 'monitor'
+      # --- END OF NEW STEPS ---
 
       - name: Set output variables
         id: vars
@@ -33,14 +45,7 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
-
-  # Job 2: Deploy the container to the Staging server
-  deploy_staging:
-    # This job will only run after the 'build_and_push' job is successful
-    needs: build_and_push
-    runs-on: ubuntu-latest
-
-    steps:
+          
       - name: Deploy to Staging Server
         uses: appleboy/ssh-action@master
         with:
@@ -48,10 +53,10 @@ jobs:
           username: ${{ secrets.STAGING_USERNAME }}
           key: ${{ secrets.STAGING_SSH_KEY }}
           script: |
-            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_and_push.outputs.image_tag }}
+            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
             docker stop staging-app || true
             docker rm staging-app || true
             docker run -d --restart always \
               -p 80:3000 \
               --name staging-app \
-              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_and_push.outputs.image_tag }}
+              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
