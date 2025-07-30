@@ -1,4 +1,4 @@
-name: Full CD Pipeline with Testing & Security
+name: CI/CD Pipeline
 
 on:
   push:
@@ -8,29 +8,52 @@ on:
   pull_request:
     branches:
       - main
+      - develop
 
 jobs:
-  # STAGING JOB
-  build_test_and_deploy_staging:
+  lint:
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
-    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Install Node.js Dependencies
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install Dependencies
         run: npm ci
 
-      - name: Run Automated Unit Tests
-        run: npm test
-        
-      - name: Scan for Dependency Vulnerabilities with Snyk
-        uses: snyk/actions/node@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      - name: Run Linter
+        run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
         with:
-          command: monitor
+          node-version: '18'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Tests
+        run: npm test
+
+  build_and_deploy_development:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: development
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
       - name: Set output variables
         id: vars
@@ -49,29 +72,27 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
-          
-      - name: Deploy to Staging Server
+
+      - name: Deploy to Development Server
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.STAGING_HOST }}
-          username: ${{ secrets.STAGING_USERNAME }}
-          key: ${{ secrets.STAGING_SSH_KEY }}
+          host: ${{ secrets.DEVELOPMENT_HOST }}
+          username: ${{ secrets.DEVELOPMENT_USERNAME }}
+          key: ${{ secrets.DEVELOPMENT_SSH_KEY }}
           script: |
             docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
-            docker stop staging-app || true
-            docker rm staging-app || true
+            docker stop dev-app || true
+            docker rm dev-app || true
             docker run -d --restart always \
-              -p 80:3000 \
-              --name staging-app \
+              -p 3000:3000 \
+              --name dev-app \
               ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
 
-  # PRODUCTION JOB
   build_and_deploy_production:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: ${{ secrets.PRODUCTION_URL }}
 
     steps:
       - name: Checkout Code
