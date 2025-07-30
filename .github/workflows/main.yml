@@ -1,16 +1,13 @@
-name: Full CD Pipeline with DevSecOps
+name: Rebuilding the CD Pipeline
 
 on:
   push:
     branches:
-      - main
       - develop
-  pull_request:
-    branches:
-      - main
 
 jobs:
-  build_test_and_push:
+  # Job 1: Build the code and push to Docker Hub
+  build_and_push:
     runs-on: ubuntu-latest
     outputs:
       image_tag: ${{ steps.vars.outputs.sha_short }}
@@ -37,12 +34,12 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ steps.vars.outputs.sha_short }}
 
+  # Job 2: Deploy the container to the Staging server
   deploy_staging:
-    needs: build_test_and_push
+    # This job will only run after the 'build_and_push' job is successful
+    needs: build_and_push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
-    environment: staging
-
+    
     steps:
       - name: Deploy to Staging Server
         uses: appleboy/ssh-action@master
@@ -51,34 +48,10 @@ jobs:
           username: ${{ secrets.STAGING_USERNAME }}
           key: ${{ secrets.STAGING_SSH_KEY }}
           script: |
-            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
+            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_and_push.outputs.image_tag }}
             docker stop staging-app || true
             docker rm staging-app || true
             docker run -d --restart always \
               -p 80:3000 \
               --name staging-app \
-              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
-
-  deploy_production:
-    needs: build_test_and_push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment:
-      name: production
-      url: "${{ secrets.PRODUCTION_URL }}"
-
-    steps:
-      - name: Deploy to Production Server
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.PRODUCTION_HOST }}
-          username: ${{ secrets.PRODUCTION_USERNAME }}
-          key: ${{ secrets.PRODUCTION_SSH_KEY }}
-          script: |
-            docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
-            docker stop prod-app || true
-            docker rm prod-app || true
-            docker run -d --restart always \
-              -p 80:3000 \
-              --name prod-app \
-              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_test_and_push.outputs.image_tag }}
+              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO }}:${{ needs.build_and_push.outputs.image_tag }}
