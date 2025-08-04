@@ -15,7 +15,7 @@ This repository contains the complete implementation for the "Summative Phase 3 
 
 A full walkthrough of the project, demonstrating a live code change moving from a local branch to the production environment, can be viewed below.
 
-*   **Video Link:** `https://youtu.be/__Lr52w_7-Q`
+*   **Video Link:** `https://youtu.be/__Lr52w_7-Q and https://youtu.be/j7hR9MF-IwQ`
 
 ---
 
